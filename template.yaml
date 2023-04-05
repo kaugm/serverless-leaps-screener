@@ -1,0 +1,75 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Description: Creates a Lambda that scrapes a stock screener and sends results via SNS to Email.
+
+Parameters:
+  EndpointEmail:
+    Type: String
+    Description: Email to send screened stocks
+  ScreenerURL:
+    Type: String
+    Default: https://finviz.com/screener.ashx?v=111&f=cap_midover,fa_epsyoy_pos,fa_epsyoy1_pos,fa_estltgrowth_pos,fa_pfcf_u50,fa_roi_pos,ipodate_more5,sh_opt_option,ta_perf_ddown,ta_sma200_pa&o=change
+    Description: URL to scrape stock screener data
+
+
+Resources:
+
+  # Lambda function
+  snsLambaFunction:
+    Type: AWS::Serverless::Function 
+    Properties:
+      CodeUri: app/
+      Handler: app.lambda_handler
+      Runtime: python3.7
+      Timeout: 100
+      MemorySize: 128
+      Layers:
+      - !Ref bs4LambdaLayer
+      Environment:
+        Variables:
+          snsTopic: !Ref screenerTopic
+          URL: !Ref ScreenerURL
+      Policies:
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt screenerTopic.TopicName
+      Events:
+        ScheduledFunction:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 10,12,14 ? * MON-FRI *)
+  
+  bs4LambdaLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: bs4
+      Description: Layer to install bs4 library. Zip file structure /python/<library>
+      ContentUri: "bs4/bs4.zip"
+      CompatibleRuntimes:
+        - python3.7
+      RetentionPolicy: Retain
+  
+  screenerTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: LEAPS_STOCKS_UPDATES
+  
+  screenerTopicSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: !Ref EndpointEmail
+      Protocol: email
+      TopicArn: !Ref screenerTopic
+
+
+
+
+
+## Take a note of the outputs for deploying the workflow templates in this sample application
+Outputs:
+  SNSTopic:
+    Description: "ARN of SNS Topic"
+    Value: !Ref screenerTopic
+
+
+
+
